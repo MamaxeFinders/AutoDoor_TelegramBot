@@ -1,0 +1,130 @@
+#include <ESP8266WiFi.h>
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h> //https://highvoltages.co/tutorial/esp8266/nodemcu-connect-wifi-without-hard-coding-credentials/
+
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+
+// Set GPIOs
+const int IntercomInput = 14; //D5  GPIO14 set as input for IntercomInput
+const int KeyOutput = 5; //4;     //D2  GPIO4 set as outpput for Key
+// Detects whenever the IntercomInput changed state
+bool IntercomActivated = false;
+bool PendingReply = false;
+bool AutoActivation = false;
+String answer; //Message from the bot
+// Auxiliary variables (it will only detect changes that are 1500 milliseconds apart)
+unsigned long previousMillis = 0; 
+const long interval = 1500;
+
+// Initialize Telegram BOT
+#define BOTtoken "XXXXXXXXXXXXXXXXXXXXXXXX"  // your Bot Token (Get from Botfather)
+#define CHAT_ID "XXXXXXXX"
+X509List cert(TELEGRAM_CERTIFICATE_ROOT);
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
+
+
+void setup() {
+// put your setup code here, to run once:
+Serial.begin(115200);
+WiFiManager wifiManager;
+Serial.println("Conecting.....");
+wifiManager.autoConnect("DoorBot","123456789");
+Serial.println("connected");
+
+configTime(0, 0, "pool.ntp.org"); // get UTC time via NTP
+client.setTrustAnchors(&cert); // Add root certificate for api.telegram.org
+  
+// Read the current door state
+pinMode(IntercomInput, INPUT_PULLUP);
+pinMode(KeyOutput, OUTPUT);
+digitalWrite(KeyOutput, LOW);  
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+
+// Set the IntercomInput pin as interrupt, assign interrupt function and set CHANGE mode
+attachInterrupt(digitalPinToInterrupt(IntercomInput), changeDoorStatus, RISING);
+bot.sendMessage(CHAT_ID, "DoorDfrescoBot started up", "");
+const String commands = ("["
+                            "{\"command\":\"open\",\"description\":\"open the door\"},"
+                            "{\"command\":\"cancel\",\"description\":\"cancel operation\"},"
+                            "{\"command\":\"auto\",\"description\":\"always open door automatically\"},"
+                            "{\"command\":\"stop\",\"description\":\"set to manual open mode\"}" // no comma on last command
+                            "]");
+ bot.setMyCommands(commands);
+}
+
+void loop() {
+  
+unsigned long currentMillis = millis();
+if(currentMillis - previousMillis >= interval) {
+  previousMillis = currentMillis;
+  int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+          while (numNewMessages){
+            Serial.println("got response");
+            handleNewMessages(numNewMessages);
+            numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+          }
+  
+    if (IntercomActivated){
+      if (PendingReply == false && AutoActivation == false){
+        bot.sendMessage(CHAT_ID, "* Max intercom is on * /open", "Markdown");
+        PendingReply = true;
+      }
+      else if(AutoActivation == true){
+      ActivateKeys();
+      bot.sendMessage(CHAT_ID, "Door auto activated", "");
+      PendingReply = false;  
+      IntercomActivated = false;      
+      }
+    }  
+  }
+}
+
+// Runs whenever the IntercomInput changes state
+ICACHE_RAM_ATTR void changeDoorStatus() {
+  Serial.println("State changed");
+  IntercomActivated = true;
+}
+
+void handleNewMessages(int numNewMessages){
+  Serial.print("handleNewMessages ");
+  Serial.println(numNewMessages);
+    for (int i = 0; i < numNewMessages; i++)
+    {
+    telegramMessage &msg = bot.messages[i];
+    Serial.println("Received " + msg.text);
+    //if (msg.text == "/open" && AutoActivation == false && IntercomActivated == true && PendingReply == true){
+    if (msg.text == "/open"){
+      ActivateKeys();
+      answer = "Door oppened";}
+    else if (msg.text == "/cancel" && AutoActivation == false && IntercomActivated == true && PendingReply == true){
+      answer = "Operation canceled";}
+    else if (msg.text == "/auto" && AutoActivation == false){
+      AutoActivation = true;
+      answer = "Door will automaticaly open";}
+    else if (msg.text == "/stop" && AutoActivation == true){
+      AutoActivation = false;
+      answer = "Auto activation stopped";}
+     else{
+      answer = "Message not approved";
+      }
+    bot.sendMessage(msg.chat_id, answer, "");
+    PendingReply = false;  
+  }
+}
+
+void ActivateKeys(){ //Activate the door
+    digitalWrite(KeyOutput, LOW);
+    delay(500);
+    digitalWrite(KeyOutput, HIGH);
+    delay(2000);
+    digitalWrite(KeyOutput, LOW);
+    IntercomActivated = false;  
+}
