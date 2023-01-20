@@ -13,7 +13,7 @@ The loop function is the main loop of the program, which is executed repeatedly 
 The code inside the if statement checks for new messages from the Telegram bot and calls the handleNewMessages function to handle them. It also checks if the intercom is activated, and if it is, it sends a message to the Telegram chat asking the user to open the door. If the AutoActivation variable is set to true, it will automatically activate the keys without waiting for user input.
 
 ### PROGRAM SETUP
-t first initializes the serial communication and sets the baud rate to 115200. Then it uses the WiFiManager library to connect to a WiFi network. The network's name is "MaxDoorBot" and the password is "123456789".
+First initializes the serial communication and sets the baud rate to 115200. Then it uses the WiFiManager library to connect to a WiFi network. The network's name is "MaxDoorBot" and the password is "123456789".
 
 After connecting to WiFi, the code uses the configTime function to set the time using the NTP (Network Time Protocol) and set the time zone, then it sets the trust anchor for the Telegram API.
 
